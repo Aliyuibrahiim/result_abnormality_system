@@ -1,0 +1,1 @@
+// Livewire automatically handles Alpine
