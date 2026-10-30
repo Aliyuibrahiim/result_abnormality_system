@@ -6,26 +6,35 @@ RUN npm ci || npm install
 COPY . .
 RUN npm run build
 
-# Stage 2: Production PHP-FPM + Nginx (Render official recommendation)
-FROM richarvey/nginx-php-fpm:3.1.6
+# Stage 2: Production PHP-FPM + Nginx (PHP 8.4)
+FROM serversideup/php:8.4-fpm-nginx
 
-WORKDIR /var/www/html
+# Switch to root to install PHP extensions and set permissions
+USER root
 
-# Copy application source code
-COPY . .
+# Install necessary extensions for Laravel, PostgreSQL, and Maatwebsite Excel
+RUN install-php-extensions gd zip intl pdo_pgsql
+
+# Copy application source code with proper ownership
+COPY --chown=www-data:www-data . /var/www/html
 
 # Copy compiled frontend assets from frontend stage
-COPY --from=frontend /app/public/build ./public/build
+COPY --chown=www-data:www-data --from=frontend /app/public/build /var/www/html/public/build
 
-# Container configuration for Render & Laravel
-ENV SKIP_COMPOSER 1
-ENV WEBROOT /var/www/html/public
-ENV PHP_ERRORS_STDERR 1
-ENV RUN_SCRIPTS 1
-ENV REAL_IP_HEADER 1
-ENV COMPOSER_ALLOW_SUPERUSER 1
+# Ensure storage and bootstrap/cache permissions
+RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Ensure deployment script has executable permissions inside the container
-RUN chmod +x /var/www/html/scripts/00-laravel-deploy.sh
+# Switch to non-root user and pre-install Composer dependencies during build
+USER www-data
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-CMD ["/start.sh"]
+# Expose internal Nginx port
+EXPOSE 8080
+
+# Built-in Laravel automations on container startup
+ENV AUTORUN_ENABLED="true"
+ENV AUTORUN_LARAVEL_MIGRATION="true"
+ENV AUTORUN_LARAVEL_MIGRATION_FORCE="true"
+ENV AUTORUN_LARAVEL_CONFIG_CACHE="true"
+ENV AUTORUN_LARAVEL_ROUTE_CACHE="true"
+ENV AUTORUN_LARAVEL_VIEW_CACHE="true"
