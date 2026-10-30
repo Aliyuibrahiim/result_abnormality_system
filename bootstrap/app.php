@@ -18,8 +18,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
+        ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // Gracefully handle role / permission denial instead of crashing with error 500
+        $exceptions->render(function (\Spatie\Permission\Exceptions\UnauthorizedException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'User does not have the right roles.'], 403);
+            }
+            return redirect()->route('dashboard')->with('error', 'You do not have permission to access that page.');
+        });
     })->create();

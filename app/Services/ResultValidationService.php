@@ -178,19 +178,27 @@ class ResultValidationService
             }
         }
 
-        // Rule 17: Student offering more than maximum credit units (e.g. > 24)
+                // Rule 17: Student offering more than maximum credit units (e.g. > 24)
         $totalRegisteredUnits = \App\Models\CourseRegistration::where('student_id', $result->student_id)
                                     ->where('academic_session_id', $result->academic_session_id)
                                     ->join('courses', 'course_registrations.course_id', '=', 'courses.id')
                                     ->sum('courses.unit_load');
+
         if ($totalRegisteredUnits > 24) {
-            if (!in_array('Exceeded Maximum Credit Units', $existingFlags)) {
+            // Check if this student was ALREADY flagged for this session so we don't duplicate on every course
+            $alreadyFlaggedForStudent = FlaggedResult::whereHas('result', function ($query) use ($result) {
+                $query->where('student_id', $result->student_id)
+                      ->where('academic_session_id', $result->academic_session_id);
+            })->where('abnormality_type', 'Exceeded Maximum Credit Units')->exists();
+
+            if (!$alreadyFlaggedForStudent && !in_array('Exceeded Maximum Credit Units', $existingFlags)) {
                 $flagsToCreate[] = [
                     'abnormality_type' => 'Exceeded Maximum Credit Units',
                     'severity' => 'High',
                 ];
             }
         }
+
 
         // Rule 20: Duplicate course for same student in same semester (Check DB for another result)
         $duplicateResult = Result::where('student_id', $result->student_id)

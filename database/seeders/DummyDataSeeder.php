@@ -84,7 +84,7 @@ class DummyDataSeeder extends Seeder
             ['name' => 'Missing Score', 'rule_type' => 'missing_score', 'condition' => json_encode(['check' => 'ca_or_exam']), 'applicable_scope' => 'all', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
-        // 6. Create 5 Students per level, Register them for Courses, and Upload some Results
+                // 6. Create Students per level, Register them for Courses, and Upload some Results
         $levels = [400, 300, 200, 100];
         
         foreach ($levels as $level) {
@@ -106,56 +106,59 @@ class DummyDataSeeder extends Seeder
                     'level' => $level,
                 ]);
 
-                // Register student for all courses up to their level
-                foreach ($allCourses as $courseLevel => $levelCourses) {
-                    if ($courseLevel <= $level) {
-                        foreach ($levelCourses as $index => $course) {
-                            CourseRegistration::create([
-                                'student_id' => $student->id,
-                                'course_id' => $course->id,
-                                'academic_session_id' => $session->id,
-                            ]);
+                // Register student only for their current level courses in the active session
+                $currentLevelCourses = $allCourses[$level] ?? [];
+                
+                // Intentionally make ONLY the 1st student in 400L exceed 24 units for demonstration
+                $coursesToRegister = $currentLevelCourses;
+                if ($level == 400 && $i == 1) {
+                    // Give this one student extra courses so Rule 17 has a clean test case
+                    $coursesToRegister = array_merge($currentLevelCourses, $allCourses[100] ?? [], $allCourses[200] ?? []);
+                }
 
-                            // Add results for some courses (e.g., lower level courses)
-                            if ($courseLevel < $level || ($courseLevel == $level && $index == 0)) {
-                                $caScore = rand(15, 30);
-                                $examScore = rand(30, 70);
-                                $total = $caScore + $examScore;
-                                
-                                $grade = 'F'; $points = 0;
-                                if ($total >= 70) { $grade = 'A'; $points = 5; }
-                                elseif ($total >= 60) { $grade = 'B'; $points = 4; }
-                                elseif ($total >= 50) { $grade = 'C'; $points = 3; }
-                                elseif ($total >= 45) { $grade = 'D'; $points = 2; }
+                foreach ($coursesToRegister as $index => $course) {
+                    CourseRegistration::create([
+                        'student_id' => $student->id,
+                        'course_id' => $course->id,
+                        'academic_session_id' => $session->id,
+                    ]);
 
-                                // Create an abnormality for the very first student of each level
-                                $isAbnormal = ($i == 1 && $courseLevel == $level);
-                                if ($isAbnormal) {
-                                    $caScore = 45; // Invalid CA
-                                    $total = $caScore + $examScore;
-                                }
+                    // Add result for the courses
+                    $caScore = rand(15, 30);
+                    $examScore = rand(30, 70);
+                    $total = $caScore + $examScore;
+                    
+                    $grade = 'F'; $points = 0;
+                    if ($total >= 70) { $grade = 'A'; $points = 5; }
+                    elseif ($total >= 60) { $grade = 'B'; $points = 4; }
+                    elseif ($total >= 50) { $grade = 'C'; $points = 3; }
+                    elseif ($total >= 45) { $grade = 'D'; $points = 2; }
 
-                                $result = \App\Models\Result::create([
-                                    'student_id' => $student->id,
-                                    'course_id' => $course->id,
-                                    'academic_session_id' => $session->id,
-                                    'ca_score' => $caScore,
-                                    'exam_score' => $examScore,
-                                    'total_score' => $total,
-                                    'grade' => $grade,
-                                    'points' => $points,
-                                ]);
+                    // Create an abnormality for the very first student of each level
+                    $isAbnormal = ($i == 1 && $index == 0);
+                    if ($isAbnormal) {
+                        $caScore = 45; // Invalid CA
+                        $total = $caScore + $examScore;
+                    }
 
-                                if ($isAbnormal) {
-                                    \App\Models\FlaggedResult::create([
-                                        'result_id' => $result->id,
-                                        'abnormality_type' => 'CA Score Exceeds Maximum (45 > 30)',
-                                        'severity' => 'high',
-                                        'is_resolved' => false,
-                                    ]);
-                                }
-                            }
-                        }
+                    $result = \App\Models\Result::create([
+                        'student_id' => $student->id,
+                        'course_id' => $course->id,
+                        'academic_session_id' => $session->id,
+                        'ca_score' => $caScore,
+                        'exam_score' => $examScore,
+                        'total_score' => $total,
+                        'grade' => $grade,
+                        'points' => $points,
+                    ]);
+
+                    if ($isAbnormal) {
+                        \App\Models\FlaggedResult::create([
+                            'result_id' => $result->id,
+                            'abnormality_type' => 'CA Score Exceeds Maximum (45 > 30)',
+                            'severity' => 'high',
+                            'is_resolved' => false,
+                        ]);
                     }
                 }
             }
